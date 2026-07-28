@@ -7,23 +7,24 @@ import streamlit_folium as sf
 st.set_page_config(
     page_title="Dashboard BTS Bakti",
     page_icon="⚡",
-    layout="wide"  # coba aktifkan ini
+    layout="wide"
 )
+
 st.title("🔍 Cari Lokasi BTS Bakti")
 st.markdown("Dashboard untuk mencari lokasi BTS terdekat")
-
-# ... (kode lainnya)
 
 df = pd.read_csv('sites.csv')
 df = df.dropna(subset=['latitude', 'longitude'])
 
 option = st.selectbox("Pilih Metode Pencarian", ["Longitude/Latitude", "Pilih Berdasarkan Area"])
+
 if option == "Longitude/Latitude":
     lat = st.number_input("Latitude", format="%.6f")
     lon = st.number_input("Longitude", format="%.6f")
     if st.button("Cari"):
         df['jarak'] = df.apply(lambda row: geodesic((lat, lon), (row['latitude'], row['longitude'])).km, axis=1)
         site_terdekat = df[df['jarak'] <= 5] # Radius 5 Km
+
         # Kesimpulan
         st.write("**Kesimpulan:**")
         st.write(f"1. Pada lokasi ({lat}, {lon}), ditemukan site terdekat dalam radius 5 Km:")
@@ -41,6 +42,7 @@ if option == "Longitude/Latitude":
         for overlap in overlap_list:
             count = len(site_terdekat[site_terdekat['K2-K3 Kategori'].astype(str).str.contains(overlap, case=False, na=False)])
             st.write(f" - {overlap}: {count} site")
+
         # Tampilkan map
         m = folium.Map(location=[lat, lon], zoom_start=12)
         folium.Marker([lat, lon], icon=folium.Icon(color='red'), popup='Lokasi Anda').add_to(m)
@@ -62,30 +64,64 @@ if option == "Longitude/Latitude":
             else:
                 warna_overlap = 'gray'
             folium.Marker([row['latitude'], row['longitude']], icon=folium.Icon(color=warna, icon_color=warna_overlap), popup=row['Site Name']).add_to(m)
+
+        # Legend
+        legend_html = """
+        <div style="position: fixed; bottom: 50px; left: 50px; z-index: 9999; background-color: white; padding: 10px; border: 1px solid black;">
+            <h4>Legend</h4>
+            <p><i class="fa fa-map-marker" style="color:blue"></i> 4G</p>
+            <p><i class="fa fa-map-marker" style="color:green"></i> USO</p>
+            <p><i class="fa fa-map-marker" style="color:gray"></i> Lainnya</p>
+            <hr>
+            <p><i class="fa fa-map-marker" style="color:lightblue"></i> No overlapping Issue</p>
+            <p><i class="fa fa-map-marker" style="color:yellow"></i> K1 : Tidak Overlap</p>
+            <p><i class="fa fa-map-marker" style="color:orange"></i> K2 : Overlap Sebagian</p>
+            <p><i class="fa fa-map-marker" style="color:red"></i> K3 : Full Overlap</p>
+        </div>
+        """
+        m.get_root().html.add_child(folium.Element(legend_html))
+
         sf.folium_static(m, width=700, height=500)
         st.write("Site Terdekat dalam Radius 5 Km:")
         st.write(site_terdekat)
+
 elif option == "Pilih Berdasarkan Area":
     kabupaten_list = ['Select All'] + list(df['Kabupaten'].unique())
     kabupaten = st.selectbox("Pilih Kabupaten", kabupaten_list)
     if kabupaten == 'Select All':
+        kecamatan_list = ['Select All'] + list(df['Kecamatan'].unique())
+    else:
+        kecamatan_list = ['Select All'] + list(df[df['Kabupaten'] == kabupaten]['Kecamatan'].unique())
+    kecamatan = st.selectbox("Pilih Kecamatan", kecamatan_list)
+    if kecamatan == 'Select All':
         desa_list = ['Select All'] + list(df['Desa'].unique())
     else:
-        desa_list = ['Select All'] + list(df[df['Kabupaten'] == kabupaten]['Desa'].unique())
+        desa_list = ['Select All'] + list(df[(df['Kabupaten'] == kabupaten) & (df['Kecamatan'] == kecamatan)]['Desa'].unique())
     desa = st.selectbox("Pilih Desa", desa_list)
+    
     if st.button("Cari"):
-        if kabupaten == 'Select All' and desa == 'Select All':
+        if kabupaten == 'Select All' and kecamatan == 'Select All' and desa == 'Select All':
             site_terdekat = df
             area = "Semua Area"
-        elif kabupaten == 'Select All':
+        elif kabupaten == 'Select All' and kecamatan == 'Select All':
             site_terdekat = df[df['Desa'] == desa]
             area = desa
-        elif desa == 'Select All':
+        elif kabupaten == 'Select All' and desa == 'Select All':
+            site_terdekat = df[df['Kecamatan'] == kecamatan]
+            area = kecamatan
+        elif kecamatan == 'Select All' and desa == 'Select All':
             site_terdekat = df[df['Kabupaten'] == kabupaten]
             area = kabupaten
-        else:
+        elif desa == 'Select All':
+            site_terdekat = df[(df['Kabupaten'] == kabupaten) & (df['Kecamatan'] == kecamatan)]
+            area = f"{kecamatan}, {kabupaten}"
+        elif kecamatan == 'Select All':
             site_terdekat = df[(df['Kabupaten'] == kabupaten) & (df['Desa'] == desa)]
             area = f"{desa}, {kabupaten}"
+        else:
+            site_terdekat = df[(df['Kabupaten'] == kabupaten) & (df['Kecamatan'] == kecamatan) & (df['Desa'] == desa)]
+            area = f"{desa}, {kecamatan}, {kabupaten}"
+
         # Kesimpulan
         st.write("**Kesimpulan:**")
         st.write(f"1. Pada area {area}, ditemukan:")
